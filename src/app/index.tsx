@@ -1,10 +1,24 @@
+/*
+Notes for me
+  ParkMate Main Application Screen
+
+  This file controls the main user interface and screen flow for the ParkMate app.
+
+  The project is organised into separate folders for better software architecture:
+  - data/ stores parking area data
+  - utils/ stores reusable parking logic tested with Jest
+  - services/ stores device helper logic such as alerts, speech, and map directions
+  - theme/ stores light and dark mode colours
+
+  This structure makes the app easier to maintain, test, explain, and extend.
+*/
+
 import * as Battery from 'expo-battery';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import { Accelerometer } from 'expo-sensors';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
   Platform,
   Pressable,
   SafeAreaView,
@@ -15,83 +29,31 @@ import {
   View,
 } from 'react-native';
 
+import { ParkingArea, parkingAreas } from '../data/parkingData';
+import {
+  openMapDirections,
+  showMessage,
+  speakText,
+} from '../services/deviceService';
+import { getAppTheme } from '../theme/theme';
+import {
+  canSaveFavourite,
+  getAvailabilityColour,
+  getAvailabilityStatus,
+} from '../utils/parkingUtils';
+
+// SECTION: Screen/tab names
+// These are the main app sections displayed in the bottom navigation.
+// activeTab controls which screen is shown.
 type TabName = 'Home' | 'Parking' | 'Map' | 'Favourites' | 'Safety' | 'Settings';
 
-type ParkingArea = {
-  id: string;
-  name: string;
-  zone: string;
-  distance: string;
-  available: number;
-  total: number;
-  note: string;
-};
-
-const parkingAreas: ParkingArea[] = [
-  {
-    id: 'p1',
-    name: 'Car Park 3',
-    zone: 'Library Zone',
-    distance: '2 min walk',
-    available: 28,
-    total: 80,
-    note: 'Closest to the Library, Agora and main study spaces.',
-  },
-  {
-    id: 'p2',
-    name: 'Car Park 7',
-    zone: 'Sports Centre',
-    distance: '5 min walk',
-    available: 9,
-    total: 65,
-    note: 'Useful for the gym, sports centre and nearby tutorial rooms.',
-  },
-  {
-    id: 'p3',
-    name: 'Car Park 1',
-    zone: 'Main Entrance',
-    distance: '7 min walk',
-    available: 0,
-    total: 120,
-    note: 'Often busy during morning classes and peak arrival times.',
-  },
-  {
-    id: 'p4',
-    name: 'Car Park 6',
-    zone: 'Science Drive',
-    distance: '4 min walk',
-    available: 16,
-    total: 70,
-    note: 'Good backup option for students attending labs and lectures.',
-  },
-];
-
-function getAvailabilityStatus(available: number, total: number) {
-  if (available === 0) return 'Full';
-
-  const ratio = available / total;
-
-  if (ratio >= 0.3) return 'High availability';
-  if (ratio >= 0.1) return 'Limited availability';
-  return 'Low availability';
-}
-
-function getAvailabilityColour(status: string) {
-  if (status === 'High availability') return '#16a34a';
-  if (status === 'Limited availability') return '#ca8a04';
-  if (status === 'Low availability') return '#ea580c';
-  return '#dc2626';
-}
-
-function showMessage(title: string, message: string) {
-  if (Platform.OS === 'web') {
-    window.alert(`${title}\n\n${message}`);
-  } else {
-    Alert.alert(title, message);
-  }
-}
-
+// SECTION: Main app component
+// This component connects the screens, app state, selected parking area,
+// device features, theme mode, and user actions.
 export default function ParkMateApp() {
+  // SECTION: App state
+  // These state variables store the current screen, selected parking,
+  // favourites, GPS result, battery level, sensor status, and dark mode.
   const [activeTab, setActiveTab] = useState<TabName>('Home');
   const [selectedParking, setSelectedParking] = useState<ParkingArea>(parkingAreas[0]);
   const [favourites, setFavourites] = useState<ParkingArea[]>([parkingAreas[0]]);
@@ -101,19 +63,13 @@ export default function ParkMateApp() {
   const [movement, setMovement] = useState('Waiting for movement data...');
   const [lastAction, setLastAction] = useState('No action yet.');
 
-  const theme = useMemo(
-    () => ({
-      bg: darkMode ? '#0f172a' : '#eef6ff',
-      card: darkMode ? '#1e293b' : '#ffffff',
-      text: darkMode ? '#f8fafc' : '#0f172a',
-      muted: darkMode ? '#cbd5e1' : '#475569',
-      border: darkMode ? '#334155' : '#cbd5e1',
-      accent: '#2563eb',
-      softAccent: darkMode ? '#1e3a8a' : '#dbeafe',
-    }),
-    [darkMode]
-  );
+  // SECTION: Theme
+  // getAppTheme is imported from theme/theme.ts to keep colours separate from screen logic.
+  const theme = useMemo(() => getAppTheme(darkMode), [darkMode]);
 
+  // SECTION: Device features loaded on app start
+  // Loads battery level and starts accelerometer sensor on mobile.
+  // On web, accelerometer shows a fallback message because browser support is limited.
   useEffect(() => {
     async function loadBattery() {
       try {
@@ -153,27 +109,52 @@ export default function ParkMateApp() {
     };
   }, []);
 
+  // SECTION: GPS feature
+  // Requests location permission and displays the user's current GPS coordinates.
+  // If GPS is unavailable on web due to browser privacy/settings, it uses a safe
+  // La Trobe demo location so the feature can still be demonstrated clearly.
   async function requestLocation() {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
 
       if (status !== 'granted') {
-        setLocationText('Location permission denied.');
-        setLastAction('GPS permission was denied.');
+        setLocationText(
+          'Demo location loaded: La Trobe University, Bundoora\nLat: -37.7216, Lng: 145.0480'
+        );
+        setLastAction('GPS permission denied, so demo campus location was used.');
         return;
       }
 
       const location = await Location.getCurrentPositionAsync({});
-      const text = `Lat: ${location.coords.latitude.toFixed(4)}, Lng: ${location.coords.longitude.toFixed(4)}`;
+
+      const text = `Live GPS loaded\nLat: ${location.coords.latitude.toFixed(
+        4
+      )}, Lng: ${location.coords.longitude.toFixed(4)}`;
 
       setLocationText(text);
-      setLastAction('GPS location loaded successfully.');
+      setLastAction('Live GPS location loaded successfully.');
     } catch {
-      setLocationText('Location unavailable on this device/browser.');
-      setLastAction('GPS request failed or is unsupported.');
+      setLocationText(
+        'Demo location loaded: La Trobe University, Bundoora\nLat: -37.7216, Lng: 145.0480'
+      );
+      setLastAction('GPS unavailable on this device/browser, so demo campus location was used.');
     }
   }
 
+  // SECTION: Open directions feature
+  // Uses deviceService.ts to open Apple Maps on iOS or Google Maps on web/Android.
+  async function handleOpenDirections() {
+    const result = await openMapDirections(
+      selectedParking.latitude,
+      selectedParking.longitude,
+      selectedParking.name
+    );
+
+    setLastAction(result);
+  }
+
+  // SECTION: Notification feature
+  // Sends a parking reminder on mobile. On web, it shows a fallback alert.
   async function sendParkingNotification() {
     try {
       if (Platform.OS === 'web') {
@@ -209,40 +190,34 @@ export default function ParkMateApp() {
     }
   }
 
+  // SECTION: Voice assistant feature
+  // Reads the selected parking details aloud using the helper from deviceService.ts.
   function speakInfo() {
     const status = getAvailabilityStatus(selectedParking.available, selectedParking.total);
+
     const message = `${selectedParking.name}, ${selectedParking.zone}. ${status}. ${selectedParking.available} out of ${selectedParking.total} spaces available. Distance is ${selectedParking.distance}. ${selectedParking.note}`;
 
     setLastAction('Voice parking assistant used.');
-
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      const utterance = new SpeechSynthesisUtterance(message);
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(utterance);
-    } else {
-      showMessage('Voice Parking Assistant', message);
-    }
+    speakText('Voice Parking Assistant', message);
   }
 
+  // SECTION: Safety voice reminder
+  // Provides spoken safety guidance to discourage unsafe app use while driving.
   function speakSafetyReminder() {
     const message =
       'ParkMate safety reminder. Only use the app when parked or when it is safe. Do not interact with the app while actively driving.';
 
     setLastAction('Safety voice reminder used.');
-
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      const utterance = new SpeechSynthesisUtterance(message);
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(utterance);
-    } else {
-      showMessage('Safety Reminder', message);
-    }
+    speakText('Safety Reminder', message);
   }
 
+  // SECTION: Favourites feature
+  // Saves selected parking areas and prevents duplicate favourites.
+  // canSaveFavourite is tested in Jest.
   function addFavourite(parking: ParkingArea) {
-    const exists = favourites.some((item) => item.id === parking.id);
+    const existingIds = favourites.map((item) => item.id);
 
-    if (!exists) {
+    if (canSaveFavourite(existingIds, parking.id)) {
       setFavourites([...favourites, parking]);
       setLastAction(`${parking.name} saved as a favourite.`);
       showMessage('Favourite Saved', `${parking.name} was added to favourites.`);
@@ -252,6 +227,8 @@ export default function ParkMateApp() {
     }
   }
 
+  // SECTION: Reusable parking card
+  // Displays each car park. Reusing this keeps the UI consistent and avoids repeated code.
   function renderParkingCard(parking: ParkingArea) {
     const status = getAvailabilityStatus(parking.available, parking.total);
     const statusColour = getAvailabilityColour(status);
@@ -282,6 +259,8 @@ export default function ParkMateApp() {
     );
   }
 
+  // SECTION: Home screen
+  // Landing page showing app summary and nearby parking options.
   function HomeScreen() {
     return (
       <ScrollView showsVerticalScrollIndicator={false}>
@@ -307,6 +286,9 @@ export default function ParkMateApp() {
     );
   }
 
+  // SECTION: Parking details screen
+  // Shows selected car park information and actions.
+  // This screen proves data is passed from Home/Map into Details.
   function ParkingScreen() {
     const status = getAvailabilityStatus(selectedParking.available, selectedParking.total);
     const statusColour = getAvailabilityColour(status);
@@ -337,6 +319,13 @@ export default function ParkMateApp() {
 
           <Pressable
             style={[styles.secondaryButton, { borderColor: theme.accent }]}
+            onPress={handleOpenDirections}
+          >
+            <Text style={[styles.secondaryButtonText, { color: theme.accent }]}>Open Directions</Text>
+          </Pressable>
+
+          <Pressable
+            style={[styles.secondaryButton, { borderColor: theme.accent }]}
             onPress={() => addFavourite(selectedParking)}
           >
             <Text style={[styles.secondaryButtonText, { color: theme.accent }]}>Save Favourite</Text>
@@ -361,6 +350,8 @@ export default function ParkMateApp() {
     );
   }
 
+  // SECTION: Map and GPS screen
+  // Requests GPS location and shows a map-style preview with selectable car parks.
   function MapScreen() {
     return (
       <ScrollView showsVerticalScrollIndicator={false}>
@@ -394,12 +385,14 @@ export default function ParkMateApp() {
         </View>
 
         <Text style={[styles.muted, { color: theme.muted }]}>
-          Note: This prototype uses a map-style preview. A production app would connect to Google Maps or Apple Maps.
+          Tap a parking area on the map preview to view details, then use Open Directions to launch map directions.
         </Text>
       </ScrollView>
     );
   }
 
+  // SECTION: Favourites screen
+  // Shows saved parking areas. SQLite/local storage is planned in localStorageService.ts.
   function FavouritesScreen() {
     return (
       <ScrollView showsVerticalScrollIndicator={false}>
@@ -412,8 +405,8 @@ export default function ParkMateApp() {
         <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>SQLite / Local Storage Plan</Text>
           <Text style={[styles.muted, { color: theme.muted }]}>
-            This prototype uses app state for fast demonstration. The installed SQLite package is intended for
-            persistent favourites in the final mobile build.
+            This prototype uses app state for fast demonstration. The SQLite service file shows where persistent
+            local favourites would be implemented in the final mobile build.
           </Text>
         </View>
 
@@ -426,6 +419,8 @@ export default function ParkMateApp() {
     );
   }
 
+  // SECTION: Safety and device features screen
+  // Demonstrates battery level, accelerometer sensor, and safety voice reminder.
   function SafetyScreen() {
     return (
       <ScrollView showsVerticalScrollIndicator={false}>
@@ -459,6 +454,8 @@ export default function ParkMateApp() {
     );
   }
 
+  // SECTION: Settings screen
+  // Demonstrates dark mode, Firebase plan, AdMob placeholder, and last user action.
   function SettingsScreen() {
     return (
       <ScrollView showsVerticalScrollIndicator={false}>
@@ -508,6 +505,8 @@ export default function ParkMateApp() {
     );
   }
 
+  // SECTION: Manual tab navigation
+  // Decides which screen to display based on the selected bottom tab.
   function renderActiveScreen() {
     if (activeTab === 'Home') return <HomeScreen />;
     if (activeTab === 'Parking') return <ParkingScreen />;
@@ -519,6 +518,8 @@ export default function ParkMateApp() {
 
   const tabs: TabName[] = ['Home', 'Parking', 'Map', 'Favourites', 'Safety', 'Settings'];
 
+  // SECTION: App layout
+  // Renders the custom top header, active screen, and bottom navigation tabs.
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]}>
       <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} />
@@ -539,10 +540,7 @@ export default function ParkMateApp() {
           {tabs.map((tab) => (
             <Pressable
               key={tab}
-              style={[
-                styles.tab,
-                activeTab === tab && { backgroundColor: theme.accent },
-              ]}
+              style={[styles.tab, activeTab === tab && { backgroundColor: theme.accent }]}
               onPress={() => setActiveTab(tab)}
             >
               <Text style={[styles.tabText, activeTab === tab && { color: '#ffffff' }]}>
@@ -556,6 +554,9 @@ export default function ParkMateApp() {
   );
 }
 
+// SECTION: Styling
+// These styles control layout, spacing, cards, buttons, map preview, and bottom navigation.
+// Keeping styles organised helps with live code editing during Q&A.
 const styles = StyleSheet.create({
   container: {
     flex: 1,
