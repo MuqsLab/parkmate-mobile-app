@@ -432,12 +432,9 @@ Current limitations:
 ## 🚀 Future Improvements
 
 Future improvements could include:
-
-- Connecting Firestore to live parking data  
+ 
 - Adding Firebase Authentication for student accounts  
 - Persisting favourites using SQLite  
-- Adding a real map SDK integration  
-- Adding more automated UI tests  
 - Expanding Firebase Test Lab testing to more devices  
 - Creating a production mobile release build  
 
