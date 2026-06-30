@@ -1866,8 +1866,9 @@ function createStyles(theme: ReturnType<typeof getAppTheme>) {
       elevation: 2,
     },
     scoreHeaderRow: {
-      flexDirection: "column",
-      alignItems: "flex-start",
+      flexDirection: Platform.OS === "web" ? "row" : "column",
+      justifyContent: "space-between",
+      alignItems: Platform.OS === "web" ? "center" : "flex-start",
       gap: 12,
       marginBottom: 8,
     },
@@ -1877,9 +1878,7 @@ function createStyles(theme: ReturnType<typeof getAppTheme>) {
       paddingVertical: 12,
       paddingHorizontal: 16,
       alignItems: "center",
-      alignSelf: "flex-start",
-      minWidth: 150,
-      maxWidth: "100%",
+      minWidth: 130,
     },
     confidenceNumber: {
       color: theme.accent,
