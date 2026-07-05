@@ -1,9 +1,15 @@
-// SECTION: Expo Router layout
-// This file controls the overall navigation shell for the app.
-// ParkMate currently uses one main screen, index.tsx, because the prototype
-// handles tab switching manually inside the main app component.
-// headerShown: false removes the default Expo header so the custom ParkMate
-// header and bottom navigation are visible.
+/*
+  ParkMate layout file
+
+  This file controls the Expo Router layout for the app.
+  It hides the default Expo header so ParkMate can use its own custom header
+  inside index.tsx.
+
+ This file:
+  - _layout.tsx is the root layout file.
+  - It loads the index screen.
+  - headerShown false removes the default navigation bar.
+*/
 
 import { Stack } from 'expo-router';
 
